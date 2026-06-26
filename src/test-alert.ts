@@ -1,28 +1,43 @@
 import { sendRestockAlert } from "./notifier";
 
-// Sends a real test MMS using your Railway env vars and a live alexzono product image
-async function main() {
-  const required = ["NTFY_TOPIC"];
+const SHOP_URL = "https://alexzono.com";
 
-  for (const key of required) {
-    if (!process.env[key]) {
-      console.error(`Missing env var: ${key}`);
-      process.exit(1);
-    }
+async function main() {
+  if (!process.env.NTFY_TOPIC) {
+    console.error("Missing env var: NTFY_TOPIC");
+    process.exit(1);
   }
 
-  console.log(`Sending test alert to ntfy topic: ${process.env.NTFY_TOPIC}...`);
+  // Pull a real product live from the store so URLs and images are always valid
+  const res = await fetch(`${SHOP_URL}/products.json?limit=250`);
+  const data = (await res.json()) as {
+    products: Array<{
+      title: string;
+      handle: string;
+      images: Array<{ src: string }>;
+      variants: Array<{ title: string; price: string }>;
+    }>;
+  };
 
-  await sendRestockAlert({
+  const product = data.products[data.products.length - 1];
+  const variant = product.variants[0];
+  const imageUrl = product.images[0]?.src ?? "";
+
+  const testVariant = {
     available: true,
-    productTitle: '"I Dig Running" Trucker Hat OG',
-    variantTitle: "One Size",
-    price: "35.00",
-    imageUrl:
-      "https://cdn.shopify.com/s/files/1/0841/3465/8396/files/IMG_3216.jpg",
-    productUrl: "https://alexzono.com/products/i-dig-running-trucker-hat-og",
-  });
+    productTitle: product.title,
+    variantTitle: variant.title,
+    price: variant.price,
+    imageUrl,
+    productUrl: `${SHOP_URL}/products/${product.handle}`,
+  };
 
+  console.log(`Sending test alert to ntfy topic: ${process.env.NTFY_TOPIC}`);
+  console.log(`Product: ${testVariant.productTitle}`);
+  console.log(`URL: ${testVariant.productUrl}`);
+  console.log(`Image: ${testVariant.imageUrl}`);
+
+  await sendRestockAlert(testVariant);
   console.log("Done — check your phone.");
 }
 
