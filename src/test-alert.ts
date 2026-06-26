@@ -2,12 +2,7 @@ import { sendRestockAlert } from "./notifier";
 
 // Sends a real test MMS using your Railway env vars and a live alexzono product image
 async function main() {
-  const required = [
-    "TWILIO_ACCOUNT_SID",
-    "TWILIO_AUTH_TOKEN",
-    "TWILIO_FROM_NUMBER",
-    "NOTIFY_PHONE_NUMBER",
-  ];
+  const required = ["NTFY_TOPIC"];
 
   for (const key of required) {
     if (!process.env[key]) {
@@ -16,7 +11,7 @@ async function main() {
     }
   }
 
-  console.log(`Sending test MMS to ${process.env.NOTIFY_PHONE_NUMBER}...`);
+  console.log(`Sending test alert to ntfy topic: ${process.env.NTFY_TOPIC}...`);
 
   await sendRestockAlert({
     available: true,
