@@ -1,0 +1,22 @@
+{
+  "name": "mini-shopify-monitor",
+  "version": "1.0.0",
+  "description": "Headless Shopify restock monitor for alexzono.com",
+  "main": "dist/monitor.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/monitor.js",
+    "dev": "ts-node src/monitor.ts"
+  },
+  "dependencies": {
+    "twilio": "^5.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
