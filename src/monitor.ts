@@ -94,12 +94,7 @@ async function poll(previousState: StateMap, isFirstRun: boolean): Promise<State
 async function main() {
   console.log(`[INIT] Shopify monitor starting — polling ${SHOP_URL} every ${POLL_INTERVAL_MS / 1000}s`);
 
-  const requiredEnv = [
-    "TWILIO_ACCOUNT_SID",
-    "TWILIO_AUTH_TOKEN",
-    "TWILIO_FROM_NUMBER",
-    "NOTIFY_PHONE_NUMBER",
-  ];
+  const requiredEnv = ["NTFY_TOPIC"];
 
   for (const key of requiredEnv) {
     if (!process.env[key]) {

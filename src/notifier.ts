@@ -1,45 +1,32 @@
-import twilio from "twilio";
 import type { VariantState } from "./types";
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID!;
-const authToken = process.env.TWILIO_AUTH_TOKEN!;
-const fromNumber = process.env.TWILIO_FROM_NUMBER!;
-const toNumber = process.env.NOTIFY_PHONE_NUMBER!;
-
-async function isImageFetchable(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url, { method: "HEAD" });
-    const ct = res.headers.get("content-type") ?? "";
-    return res.ok && ct.startsWith("image/");
-  } catch {
-    return false;
-  }
-}
+const NTFY_TOPIC = process.env.NTFY_TOPIC!;
+const NTFY_BASE = "https://ntfy.sh";
 
 export async function sendRestockAlert(variant: VariantState): Promise<void> {
-  const client = twilio(accountSid, authToken);
+  const body = `${variant.variantTitle} — $${variant.price}\n\nTap to buy now`;
 
-  const body = [
-    `🚨 RESTOCK: ${variant.productTitle}`,
-    `${variant.variantTitle} — $${variant.price}`,
-    ``,
-    `Buy now: ${variant.productUrl}`,
-  ].join("\n");
-
-  const params: Parameters<typeof client.messages.create>[0] = {
-    body,
-    from: fromNumber,
-    to: toNumber,
+  const headers: Record<string, string> = {
+    "Title": `🚨 RESTOCK: ${variant.productTitle}`,
+    "Priority": "urgent",
+    "Tags": "rotating_light",
+    "Click": variant.productUrl,
+    "Content-Type": "text/plain",
   };
 
-  if (variant.imageUrl && (await isImageFetchable(variant.imageUrl))) {
-    params.mediaUrl = [variant.imageUrl];
-    console.log(`[NOTIFIER] Image attached: ${variant.imageUrl}`);
-  } else {
-    console.log(`[NOTIFIER] Image not fetchable — sending SMS only`);
+  if (variant.imageUrl) {
+    headers["Attach"] = variant.imageUrl;
   }
 
-  await client.messages.create(params);
+  const res = await fetch(`${NTFY_BASE}/${NTFY_TOPIC}`, {
+    method: "POST",
+    headers,
+    body,
+  });
+
+  if (!res.ok) {
+    throw new Error(`ntfy returned ${res.status}: ${await res.text()}`);
+  }
 
   console.log(`[ALERT SENT] ${variant.productTitle} — ${variant.variantTitle}`);
 }
