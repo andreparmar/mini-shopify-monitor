@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/monitor.js",
-    "dev": "ts-node src/monitor.ts"
+    "dev": "ts-node src/monitor.ts",
+    "test-alert": "ts-node src/test-alert.ts"
   },
   "dependencies": {
     "twilio": "^5.4.0"
