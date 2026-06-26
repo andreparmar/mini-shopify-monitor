@@ -7,7 +7,7 @@ export async function sendRestockAlert(variant: VariantState): Promise<void> {
   const body = `${variant.variantTitle} — $${variant.price}\n\nTap to buy now`;
 
   const headers: Record<string, string> = {
-    "Title": `🚨 RESTOCK: ${variant.productTitle}`,
+    "Title": `RESTOCK: ${variant.productTitle}`,
     "Priority": "urgent",
     "Tags": "rotating_light",
     "Click": variant.productUrl,
