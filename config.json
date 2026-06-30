@@ -5,7 +5,23 @@
       "url": "https://alexzono.com",
       "intervalSeconds": 30,
       "targets": [
-        { "type": "all" }
+        {
+          "type": "all"
+        }
+      ]
+    },
+    {
+      "name": "bandit",
+      "url": "https://banditrunning.com",
+      "intervalSeconds": 30,
+      "targets": [
+        {
+          "type": "all"
+        },
+        {
+          "type": "variant_id",
+          "value": "44139116691606"
+        }
       ]
     }
   ]
