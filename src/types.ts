@@ -34,3 +34,22 @@ export interface VariantState {
 }
 
 export type StateMap = Record<string, VariantState>;
+
+// Config types
+
+export type Target =
+  | { type: "all" }
+  | { type: "handle"; value: string }
+  | { type: "variant_id"; value: string }
+  | { type: "keywords"; include: string[]; exclude: string[] };
+
+export interface StoreConfig {
+  name: string;
+  url: string;
+  intervalSeconds: number;
+  targets: Target[];
+}
+
+export interface MonitorConfig {
+  stores: StoreConfig[];
+}

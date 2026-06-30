@@ -1,6 +1,5 @@
 import { sendRestockAlert } from "./notifier";
-
-const SHOP_URL = "https://alexzono.com";
+import { loadConfig } from "./config";
 
 async function main() {
   if (!process.env.NTFY_TOPIC) {
@@ -8,8 +7,21 @@ async function main() {
     process.exit(1);
   }
 
-  // Pull a real product live from the store so URLs and images are always valid
-  const res = await fetch(`${SHOP_URL}/products.json?limit=250`);
+  const config = loadConfig();
+  const storeName = process.argv[2];
+  const store = storeName
+    ? config.stores.find((s) => s.name === storeName)
+    : config.stores[0];
+
+  if (!store) {
+    const names = config.stores.map((s) => s.name).join(", ");
+    console.error(`Store '${storeName}' not found. Available: ${names}`);
+    process.exit(1);
+  }
+
+  console.log(`Fetching live product from ${store.name} (${store.url})...`);
+
+  const res = await fetch(`${store.url}/products.json?limit=250`);
   const data = (await res.json()) as {
     products: Array<{
       title: string;
@@ -29,13 +41,12 @@ async function main() {
     variantTitle: variant.title,
     price: variant.price,
     imageUrl,
-    productUrl: `${SHOP_URL}/products/${product.handle}`,
+    productUrl: `${store.url}/products/${product.handle}`,
     availableVariants: product.variants.filter((v) => v.available).length,
     totalVariants: product.variants.length,
   };
 
-  console.log(`Sending test alert to ntfy topic: ${process.env.NTFY_TOPIC}`);
-  console.log(`Product: ${testVariant.productTitle}`);
+  console.log(`Sending test alert for: ${testVariant.productTitle}`);
   console.log(`URL: ${testVariant.productUrl}`);
   console.log(`Image: ${testVariant.imageUrl}`);
 

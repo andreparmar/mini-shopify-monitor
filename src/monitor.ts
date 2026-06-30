@@ -1,15 +1,16 @@
 import { loadState, saveState } from "./state";
 import { sendRestockAlert } from "./notifier";
+import { loadConfig } from "./config";
 import type {
   ShopifyProduct,
   ShopifyProductsResponse,
+  ShopifyVariant,
   StateMap,
+  StoreConfig,
+  Target,
   VariantState,
 } from "./types";
 
-const SHOP_URL = "https://alexzono.com";
-const PRODUCTS_URL = `${SHOP_URL}/products.json?limit=250`;
-const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS ?? "30000", 10);
 const RETRY_DELAYS_MS = [5000, 10000, 15000];
 
 function sleep(ms: number): Promise<void> {
@@ -22,28 +23,47 @@ function getImageUrl(product: ShopifyProduct, variantImageSrc: string | undefine
   return "";
 }
 
-async function fetchProducts(): Promise<ShopifyProduct[]> {
-  const res = await fetch(PRODUCTS_URL, {
+function matchesTargets(product: ShopifyProduct, variant: ShopifyVariant, targets: Target[]): boolean {
+  for (const target of targets) {
+    if (target.type === "all") return true;
+
+    if (target.type === "handle" && product.handle === target.value) return true;
+
+    if (target.type === "variant_id" && String(variant.id) === target.value) return true;
+
+    if (target.type === "keywords") {
+      const title = product.title.toLowerCase();
+      const allIncluded = target.include.length === 0 || target.include.every((kw) => title.includes(kw.toLowerCase()));
+      const noneExcluded = target.exclude.every((kw) => !title.includes(kw.toLowerCase()));
+      if (allIncluded && noneExcluded) return true;
+    }
+  }
+  return false;
+}
+
+async function fetchProducts(store: StoreConfig): Promise<ShopifyProduct[]> {
+  const url = `${store.url}/products.json?limit=250`;
+  const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; restock-monitor/1.0)" },
   });
 
-  if (!res.ok) throw new Error(`products.json returned ${res.status}`);
+  if (!res.ok) throw new Error(`${store.name}: products.json returned ${res.status}`);
 
   const data = (await res.json()) as ShopifyProductsResponse;
   return data.products;
 }
 
-async function fetchWithRetry(): Promise<ShopifyProduct[]> {
+async function fetchWithRetry(store: StoreConfig): Promise<ShopifyProduct[]> {
   let lastErr: unknown;
 
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     try {
-      return await fetchProducts();
+      return await fetchProducts(store);
     } catch (err) {
       lastErr = err;
       if (attempt < RETRY_DELAYS_MS.length) {
         const delay = RETRY_DELAYS_MS[attempt];
-        console.warn(`[RETRY ${attempt + 1}] ${(err as Error).message} — retrying in ${delay / 1000}s`);
+        console.warn(`[${store.name}][RETRY ${attempt + 1}] ${(err as Error).message} — retrying in ${delay / 1000}s`);
         await sleep(delay);
       }
     }
@@ -52,21 +72,24 @@ async function fetchWithRetry(): Promise<ShopifyProduct[]> {
   throw lastErr;
 }
 
-function buildStateMap(products: ShopifyProduct[]): StateMap {
+function buildStateMap(store: StoreConfig, products: ShopifyProduct[]): StateMap {
   const map: StateMap = {};
 
   for (const product of products) {
+    const matchingVariants = product.variants.filter((v) => matchesTargets(product, v, store.targets));
+    if (matchingVariants.length === 0) continue;
+
     const totalVariants = product.variants.length;
     const availableVariants = product.variants.filter((v) => v.available).length;
 
-    for (const variant of product.variants) {
+    for (const variant of matchingVariants) {
       map[String(variant.id)] = {
         available: variant.available,
         productTitle: product.title,
         variantTitle: variant.title,
         price: variant.price,
         imageUrl: getImageUrl(product, variant.featured_image?.src),
-        productUrl: `${SHOP_URL}/products/${product.handle}`,
+        productUrl: `${store.url}/products/${product.handle}`,
         availableVariants,
         totalVariants,
       };
@@ -76,12 +99,12 @@ function buildStateMap(products: ShopifyProduct[]): StateMap {
   return map;
 }
 
-async function poll(previousState: StateMap, isFirstRun: boolean): Promise<StateMap> {
+async function poll(store: StoreConfig, previousState: StateMap, isFirstRun: boolean): Promise<StateMap> {
   const timestamp = new Date().toISOString();
 
   try {
-    const products = await fetchWithRetry();
-    const currentState = buildStateMap(products);
+    const products = await fetchWithRetry(store);
+    const currentState = buildStateMap(store, products);
     const restocked: VariantState[] = [];
 
     for (const [id, current] of Object.entries(currentState)) {
@@ -92,52 +115,61 @@ async function poll(previousState: StateMap, isFirstRun: boolean): Promise<State
     }
 
     if (restocked.length > 0) {
-      console.log(`[${timestamp}] ${restocked.length} restock(s) detected — sending alerts`);
+      console.log(`[${store.name}][${timestamp}] ${restocked.length} restock(s) detected — sending alerts`);
       for (const variant of restocked) {
         try {
           await sendRestockAlert(variant);
         } catch (err) {
-          console.error(`[ERROR] Failed to send alert for ${variant.productTitle}:`, err);
+          console.error(`[${store.name}][ERROR] Failed to send alert for ${variant.productTitle}:`, err);
         }
       }
     } else {
       const total = Object.keys(currentState).length;
       const available = Object.values(currentState).filter((v) => v.available).length;
-      console.log(`[${timestamp}] OK — ${available}/${total} variants in stock, no changes`);
+      console.log(`[${store.name}][${timestamp}] OK — ${available}/${total} variants in stock, no changes`);
     }
 
-    saveState(currentState);
+    saveState(store.name, currentState);
     return currentState;
   } catch (err) {
-    console.error(`[${timestamp}] Poll failed after retries:`, err);
+    console.error(`[${store.name}][${timestamp}] Poll failed after retries:`, err);
     return previousState;
   }
 }
 
-async function main() {
-  console.log(`[INIT] Shopify monitor starting — polling ${SHOP_URL} every ${POLL_INTERVAL_MS / 1000}s`);
+async function runStore(store: StoreConfig): Promise<void> {
+  const intervalMs = store.intervalSeconds * 1000;
+  console.log(`[${store.name}] Starting — polling ${store.url} every ${store.intervalSeconds}s`);
 
+  let state = loadState(store.name);
+  const isFirstRun = Object.keys(state).length === 0;
+
+  if (isFirstRun) {
+    console.log(`[${store.name}] No saved state — running silent baseline poll...`);
+  }
+
+  state = await poll(store, state, isFirstRun);
+
+  if (isFirstRun) {
+    console.log(`[${store.name}] Baseline set. Monitoring for changes...`);
+  }
+
+  setInterval(async () => {
+    state = await poll(store, state, false);
+  }, intervalMs);
+}
+
+async function main() {
   if (!process.env.NTFY_TOPIC) {
     console.error("[FATAL] Missing required env var: NTFY_TOPIC");
     process.exit(1);
   }
 
-  let state = loadState();
-  const isFirstRun = Object.keys(state).length === 0;
+  const config = loadConfig();
+  console.log(`[INIT] Loaded ${config.stores.length} store(s) from config.json`);
 
-  if (isFirstRun) {
-    console.log("[INIT] No saved state — running silent baseline poll...");
-  }
-
-  state = await poll(state, isFirstRun);
-
-  if (isFirstRun) {
-    console.log("[INIT] Baseline set. Monitoring for changes...");
-  }
-
-  setInterval(async () => {
-    state = await poll(state, false);
-  }, POLL_INTERVAL_MS);
+  // Run all store loops in parallel — each manages its own interval
+  await Promise.all(config.stores.map(runStore));
 }
 
 main();

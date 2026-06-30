@@ -1,0 +1,12 @@
+{
+  "stores": [
+    {
+      "name": "alexzono",
+      "url": "https://alexzono.com",
+      "intervalSeconds": 30,
+      "targets": [
+        { "type": "all" }
+      ]
+    }
+  ]
+}
