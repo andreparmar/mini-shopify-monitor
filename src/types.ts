@@ -29,6 +29,8 @@ export interface VariantState {
   price: string;
   imageUrl: string;
   productUrl: string;
+  availableVariants: number;
+  totalVariants: number;
 }
 
 export type StateMap = Record<string, VariantState>;

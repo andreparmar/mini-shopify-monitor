@@ -12,7 +12,18 @@ function isHat(title: string): boolean {
 
 export async function sendRestockAlert(variant: VariantState): Promise<void> {
   const hat = isHat(variant.productTitle);
-  const body = `${variant.variantTitle} — $${variant.price}\n\nTap to buy now`;
+
+  const stockLine =
+    variant.totalVariants === 1
+      ? "1 variant in stock"
+      : `${variant.availableVariants}/${variant.totalVariants} variants in stock`;
+
+  const body = [
+    `${variant.variantTitle} — $${variant.price}`,
+    stockLine,
+    "",
+    "Tap to buy now",
+  ].join("\n");
 
   const headers: Record<string, string> = {
     "Title": `RESTOCK: ${variant.productTitle}`,
@@ -36,5 +47,5 @@ export async function sendRestockAlert(variant: VariantState): Promise<void> {
     throw new Error(`ntfy returned ${res.status}: ${await res.text()}`);
   }
 
-  console.log(`[ALERT SENT]${hat ? " [HAT]" : ""} ${variant.productTitle} — ${variant.variantTitle}`);
+  console.log(`[ALERT SENT]${hat ? " [HAT]" : ""} ${variant.productTitle} — ${variant.variantTitle} (${stockLine})`);
 }

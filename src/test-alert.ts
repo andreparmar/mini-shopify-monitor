@@ -15,7 +15,7 @@ async function main() {
       title: string;
       handle: string;
       images: Array<{ src: string }>;
-      variants: Array<{ title: string; price: string }>;
+      variants: Array<{ title: string; price: string; available: boolean }>;
     }>;
   };
 
@@ -30,6 +30,8 @@ async function main() {
     price: variant.price,
     imageUrl,
     productUrl: `${SHOP_URL}/products/${product.handle}`,
+    availableVariants: product.variants.filter((v) => v.available).length,
+    totalVariants: product.variants.length,
   };
 
   console.log(`Sending test alert to ntfy topic: ${process.env.NTFY_TOPIC}`);

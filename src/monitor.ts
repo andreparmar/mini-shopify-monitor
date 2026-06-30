@@ -9,7 +9,12 @@ import type {
 
 const SHOP_URL = "https://alexzono.com";
 const PRODUCTS_URL = `${SHOP_URL}/products.json?limit=250`;
-const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS ?? "60000", 10);
+const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS ?? "30000", 10);
+const RETRY_DELAYS_MS = [5000, 10000, 15000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function getImageUrl(product: ShopifyProduct, variantImageSrc: string | undefined): string {
   if (variantImageSrc) return variantImageSrc;
@@ -19,32 +24,51 @@ function getImageUrl(product: ShopifyProduct, variantImageSrc: string | undefine
 
 async function fetchProducts(): Promise<ShopifyProduct[]> {
   const res = await fetch(PRODUCTS_URL, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; restock-monitor/1.0)",
-    },
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; restock-monitor/1.0)" },
   });
 
-  if (!res.ok) {
-    throw new Error(`products.json returned ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`products.json returned ${res.status}`);
 
   const data = (await res.json()) as ShopifyProductsResponse;
   return data.products;
+}
+
+async function fetchWithRetry(): Promise<ShopifyProduct[]> {
+  let lastErr: unknown;
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await fetchProducts();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < RETRY_DELAYS_MS.length) {
+        const delay = RETRY_DELAYS_MS[attempt];
+        console.warn(`[RETRY ${attempt + 1}] ${(err as Error).message} — retrying in ${delay / 1000}s`);
+        await sleep(delay);
+      }
+    }
+  }
+
+  throw lastErr;
 }
 
 function buildStateMap(products: ShopifyProduct[]): StateMap {
   const map: StateMap = {};
 
   for (const product of products) {
+    const totalVariants = product.variants.length;
+    const availableVariants = product.variants.filter((v) => v.available).length;
+
     for (const variant of product.variants) {
-      const key = String(variant.id);
-      map[key] = {
+      map[String(variant.id)] = {
         available: variant.available,
         productTitle: product.title,
         variantTitle: variant.title,
         price: variant.price,
         imageUrl: getImageUrl(product, variant.featured_image?.src),
         productUrl: `${SHOP_URL}/products/${product.handle}`,
+        availableVariants,
+        totalVariants,
       };
     }
   }
@@ -56,13 +80,12 @@ async function poll(previousState: StateMap, isFirstRun: boolean): Promise<State
   const timestamp = new Date().toISOString();
 
   try {
-    const products = await fetchProducts();
+    const products = await fetchWithRetry();
     const currentState = buildStateMap(products);
     const restocked: VariantState[] = [];
 
     for (const [id, current] of Object.entries(currentState)) {
       const previous = previousState[id];
-
       if (!isFirstRun && previous && !previous.available && current.available) {
         restocked.push(current);
       }
@@ -86,7 +109,7 @@ async function poll(previousState: StateMap, isFirstRun: boolean): Promise<State
     saveState(currentState);
     return currentState;
   } catch (err) {
-    console.error(`[${timestamp}] Poll failed:`, err);
+    console.error(`[${timestamp}] Poll failed after retries:`, err);
     return previousState;
   }
 }
@@ -94,13 +117,9 @@ async function poll(previousState: StateMap, isFirstRun: boolean): Promise<State
 async function main() {
   console.log(`[INIT] Shopify monitor starting — polling ${SHOP_URL} every ${POLL_INTERVAL_MS / 1000}s`);
 
-  const requiredEnv = ["NTFY_TOPIC"];
-
-  for (const key of requiredEnv) {
-    if (!process.env[key]) {
-      console.error(`[FATAL] Missing required env var: ${key}`);
-      process.exit(1);
-    }
+  if (!process.env.NTFY_TOPIC) {
+    console.error("[FATAL] Missing required env var: NTFY_TOPIC");
+    process.exit(1);
   }
 
   let state = loadState();
