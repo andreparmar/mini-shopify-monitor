@@ -18,6 +18,29 @@
           "value": "55895101636956"
         }
       ]
+    },
+    {
+      "name": "museum",
+      "url": "https://5f6216-69.myshopify.com",
+      "intervalSeconds": 30,
+      "targets": [
+        {
+          "type": "all"
+        },
+        {
+          "type": "keywords",
+          "include": [
+            "satin",
+            "nylon"
+          ],
+          "exclude": [
+            "mesh",
+            "tee",
+            "hoodie",
+            "jersey"
+          ]
+        }
+      ]
     }
   ]
 }
