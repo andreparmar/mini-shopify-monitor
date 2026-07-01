@@ -6,21 +6,16 @@
       "intervalSeconds": 30,
       "targets": [
         {
-          "type": "all"
-        }
-      ]
-    },
-    {
-      "name": "bandit",
-      "url": "https://banditrunning.com",
-      "intervalSeconds": 30,
-      "targets": [
-        {
-          "type": "all"
+          "type": "variant_id",
+          "value": "55895039672668"
         },
         {
           "type": "variant_id",
-          "value": "44139116691606"
+          "value": "55895030301020"
+        },
+        {
+          "type": "variant_id",
+          "value": "55895101636956"
         }
       ]
     }
