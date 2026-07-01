@@ -18,6 +18,29 @@
           "value": "55895101636956"
         }
       ]
+    },
+    {
+      "name": "currentlyrunning",
+      "url": "https://currentlyrunning.com",
+      "intervalSeconds": 30,
+      "targets": [
+        {
+          "type": "all"
+        },
+        {
+          "type": "keywords",
+          "include": [
+            "limited",
+            "edition",
+            "nylon",
+            "cap",
+            "brown"
+          ],
+          "exclude": [
+            "black"
+          ]
+        }
+      ]
     }
   ]
 }
