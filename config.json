@@ -6,16 +6,7 @@
       "intervalSeconds": 30,
       "targets": [
         {
-          "type": "variant_id",
-          "value": "55895039672668"
-        },
-        {
-          "type": "variant_id",
-          "value": "55895030301020"
-        },
-        {
-          "type": "variant_id",
-          "value": "55895101636956"
+          "type": "all"
         }
       ]
     }
