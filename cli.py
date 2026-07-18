@@ -51,6 +51,42 @@ def parse_keywords(raw):
     return include, exclude
 
 
+# ── Cart link helpers ──────────────────────────────────────────────────────────
+
+CART_LINK_LABELS = {"off": "Off", "cart": "Cart", "checkout": "Cart & Checkout"}
+CART_LINK_CHOICES = ["Off", "Cart", "Cart & Checkout"]
+CART_LINK_FROM_LABEL = {v: k for k, v in CART_LINK_LABELS.items()}
+
+def format_cart_links(cart_links):
+    if not cart_links:
+        return "(inherits global)"
+    mode = cart_links.get("mode", "off")
+    qty = cart_links.get("quantity", 1)
+    return f"{CART_LINK_LABELS.get(mode, mode)}  (qty {qty})"
+
+def prompt_cart_links(current):
+    current_mode = (current or {}).get("mode", "off")
+    current_qty = (current or {}).get("quantity", 1)
+
+    mode_choice = questionary.select(
+        "Cart link mode:",
+        choices=CART_LINK_CHOICES,
+        default=CART_LINK_LABELS.get(current_mode, "Off"),
+    ).ask()
+    if not mode_choice:
+        return None
+
+    mode = CART_LINK_FROM_LABEL[mode_choice]
+
+    qty_raw = questionary.text("Cart quantity:", default=str(current_qty)).ask()
+    try:
+        quantity = max(1, int(qty_raw))
+    except Exception:
+        quantity = 1
+
+    return {"mode": mode, "quantity": quantity}
+
+
 # ── Add store ─────────────────────────────────────────────────────────────────
 
 def add_store(config):
@@ -172,16 +208,38 @@ def change_interval(store):
         print("  ✗ Invalid number — unchanged")
 
 
+def edit_store_cart_links(store):
+    current = store.get("cartLinks")
+    action = questionary.select(
+        "Cart links for this store:",
+        choices=["Set override", "Clear override (use global)", "← Back"],
+    ).ask()
+
+    if not action or action == "← Back":
+        return
+
+    if action == "Clear override (use global)":
+        store.pop("cartLinks", None)
+        print("  ✓ Cleared override — this store now inherits the global cart link setting")
+        return
+
+    result = prompt_cart_links(current)
+    if result:
+        store["cartLinks"] = result
+        print(f"  ✓ Store cart links set to: {format_cart_links(result)}")
+
+
 def edit_store(store):
     while True:
         print(f"\n  Store: {store['name']}  ({store['url']})  every {store['intervalSeconds']}s")
+        print(f"  Cart links: {format_cart_links(store.get('cartLinks'))}")
         print("  Targets:")
         for i, t in enumerate(store["targets"]):
             print(f"    {i + 1}. {format_target(t)}")
 
         action = questionary.select(
             "Action:",
-            choices=["Add target", "Remove target", "Change interval", "← Back"],
+            choices=["Add target", "Remove target", "Change interval", "Cart links override", "← Back"],
         ).ask()
 
         if not action or action == "← Back":
@@ -192,6 +250,8 @@ def edit_store(store):
             remove_target(store)
         elif action == "Change interval":
             change_interval(store)
+        elif action == "Cart links override":
+            edit_store_cart_links(store)
 
 
 def edit_menu(config):
@@ -210,6 +270,20 @@ def edit_menu(config):
     store = next(s for s in config["stores"] if s["name"] == choice)
     edit_store(store)
     save_config(config)
+
+
+# ── Global cart links ─────────────────────────────────────────────────────────
+
+def edit_global_cart_links(config):
+    current = config.get("cartLinks")
+    print(f"\n  Current global cart links: {format_cart_links(current)}")
+    print("  (Per-store overrides take precedence — set via Edit store → Cart links override)")
+
+    result = prompt_cart_links(current)
+    if result:
+        config["cartLinks"] = result
+        save_config(config)
+        print(f"  ✓ Global cart links set to: {format_cart_links(result)}")
 
 
 # ── Push to Railway ───────────────────────────────────────────────────────────
@@ -266,7 +340,7 @@ def main():
 
         action = questionary.select(
             "What would you like to do?",
-            choices=["Add store", "Edit store", "Delete store", "Push to Railway", "Exit"],
+            choices=["Add store", "Edit store", "Delete store", "Cart link settings", "Push to Railway", "Exit"],
         ).ask()
 
         if not action or action == "Exit":
@@ -278,6 +352,8 @@ def main():
             edit_menu(config)
         elif action == "Delete store":
             delete_store(config)
+        elif action == "Cart link settings":
+            edit_global_cart_links(config)
         elif action == "Push to Railway":
             push_to_railway()
 

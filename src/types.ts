@@ -23,6 +23,7 @@ export interface ShopifyProductsResponse {
 }
 
 export interface VariantState {
+  variantId: string;
   available: boolean;
   productTitle: string;
   variantTitle: string;
@@ -43,13 +44,38 @@ export type Target =
   | { type: "variant_id"; value: string }
   | { type: "keywords"; include: string[]; exclude: string[] };
 
+export type CartLinkMode = "off" | "cart" | "checkout";
+
+export interface CartLinksConfig {
+  mode: CartLinkMode;
+  quantity: number;
+}
+
 export interface StoreConfig {
   name: string;
   url: string;
   intervalSeconds: number;
   targets: Target[];
+  cartLinks?: CartLinksConfig;
 }
 
 export interface MonitorConfig {
   stores: StoreConfig[];
+  cartLinks?: CartLinksConfig;
+}
+
+// Shipping details used to build a pre-filled checkout link.
+// Intentionally has no payment/card fields — only add fields here that are safe to
+// carry in a Shopify cart permalink query string.
+export interface CheckoutDetails {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  address1?: string;
+  address2?: string;
+  city?: string;
+  province?: string;
+  zip?: string;
+  country?: string;
+  phone?: string;
 }

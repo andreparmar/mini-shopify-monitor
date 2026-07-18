@@ -1,7 +1,10 @@
 import { loadState, saveState } from "./state";
 import { sendRestockAlert } from "./notifier";
 import { loadConfig } from "./config";
+import { loadCheckoutDetailsFromEnv, resolveCartLinksConfig } from "./cartLinks";
 import type {
+  CheckoutDetails,
+  MonitorConfig,
   ShopifyProduct,
   ShopifyProductsResponse,
   ShopifyVariant,
@@ -84,6 +87,7 @@ function buildStateMap(store: StoreConfig, products: ShopifyProduct[]): StateMap
 
     for (const variant of matchingVariants) {
       map[String(variant.id)] = {
+        variantId: String(variant.id),
         available: variant.available,
         productTitle: product.title,
         variantTitle: variant.title,
@@ -99,7 +103,13 @@ function buildStateMap(store: StoreConfig, products: ShopifyProduct[]): StateMap
   return map;
 }
 
-async function poll(store: StoreConfig, previousState: StateMap, isFirstRun: boolean): Promise<StateMap> {
+async function poll(
+  config: MonitorConfig,
+  store: StoreConfig,
+  checkoutDetails: CheckoutDetails,
+  previousState: StateMap,
+  isFirstRun: boolean
+): Promise<StateMap> {
   const timestamp = new Date().toISOString();
 
   try {
@@ -116,9 +126,10 @@ async function poll(store: StoreConfig, previousState: StateMap, isFirstRun: boo
 
     if (restocked.length > 0) {
       console.log(`[${store.name}][${timestamp}] ${restocked.length} restock(s) detected — sending alerts`);
+      const cartLinks = resolveCartLinksConfig(config, store);
       for (const variant of restocked) {
         try {
-          await sendRestockAlert(variant);
+          await sendRestockAlert(variant, cartLinks, store.url, checkoutDetails);
         } catch (err) {
           console.error(`[${store.name}][ERROR] Failed to send alert for ${variant.productTitle}:`, err);
         }
@@ -137,7 +148,7 @@ async function poll(store: StoreConfig, previousState: StateMap, isFirstRun: boo
   }
 }
 
-async function runStore(store: StoreConfig): Promise<void> {
+async function runStore(config: MonitorConfig, store: StoreConfig, checkoutDetails: CheckoutDetails): Promise<void> {
   const intervalMs = store.intervalSeconds * 1000;
   console.log(`[${store.name}] Starting — polling ${store.url} every ${store.intervalSeconds}s`);
 
@@ -148,14 +159,14 @@ async function runStore(store: StoreConfig): Promise<void> {
     console.log(`[${store.name}] No saved state — running silent baseline poll...`);
   }
 
-  state = await poll(store, state, isFirstRun);
+  state = await poll(config, store, checkoutDetails, state, isFirstRun);
 
   if (isFirstRun) {
     console.log(`[${store.name}] Baseline set. Monitoring for changes...`);
   }
 
   setInterval(async () => {
-    state = await poll(store, state, false);
+    state = await poll(config, store, checkoutDetails, state, false);
   }, intervalMs);
 }
 
@@ -166,10 +177,11 @@ async function main() {
   }
 
   const config = loadConfig();
+  const checkoutDetails = loadCheckoutDetailsFromEnv();
   console.log(`[INIT] Loaded ${config.stores.length} store(s) from config.json`);
 
   // Run all store loops in parallel — each manages its own interval
-  await Promise.all(config.stores.map(runStore));
+  await Promise.all(config.stores.map((store) => runStore(config, store, checkoutDetails)));
 }
 
 main();

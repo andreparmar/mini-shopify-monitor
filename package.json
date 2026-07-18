@@ -8,7 +8,8 @@
     "start": "node dist/monitor.js",
     "dev": "ts-node src/monitor.ts",
     "test-alert": "ts-node src/test-alert.ts",
-    "status": "ts-node src/status.ts"
+    "status": "ts-node src/status.ts",
+    "test": "tsc && node --test dist/cartLinks.test.js"
   },
   "dependencies": {
     "twilio": "^5.4.0"

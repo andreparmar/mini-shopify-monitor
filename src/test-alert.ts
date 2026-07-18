@@ -1,5 +1,6 @@
 import { sendRestockAlert } from "./notifier";
 import { loadConfig } from "./config";
+import { loadCheckoutDetailsFromEnv, resolveCartLinksConfig } from "./cartLinks";
 
 async function main() {
   if (!process.env.NTFY_TOPIC) {
@@ -27,7 +28,7 @@ async function main() {
       title: string;
       handle: string;
       images: Array<{ src: string }>;
-      variants: Array<{ title: string; price: string; available: boolean }>;
+      variants: Array<{ id: number; title: string; price: string; available: boolean }>;
     }>;
   };
 
@@ -36,6 +37,7 @@ async function main() {
   const imageUrl = product.images[0]?.src ?? "";
 
   const testVariant = {
+    variantId: String(variant.id),
     available: true,
     productTitle: product.title,
     variantTitle: variant.title,
@@ -46,11 +48,15 @@ async function main() {
     totalVariants: product.variants.length,
   };
 
+  const cartLinks = resolveCartLinksConfig(config, store);
+  const checkoutDetails = loadCheckoutDetailsFromEnv();
+
   console.log(`Sending test alert for: ${testVariant.productTitle}`);
   console.log(`URL: ${testVariant.productUrl}`);
   console.log(`Image: ${testVariant.imageUrl}`);
+  console.log(`Cart links mode: ${cartLinks.mode} (qty ${cartLinks.quantity})`);
 
-  await sendRestockAlert(testVariant);
+  await sendRestockAlert(testVariant, cartLinks, store.url, checkoutDetails);
   console.log("Done — check your phone.");
 }
 

@@ -1,4 +1,5 @@
 import { loadConfig } from "./config";
+import { resolveCartLinksConfig } from "./cartLinks";
 import type { Target } from "./types";
 
 function describeTarget(target: Target): string {
@@ -13,15 +14,26 @@ function describeTarget(target: Target): string {
   return JSON.stringify(target);
 }
 
+function describeCartLinks(store: Parameters<typeof resolveCartLinksConfig>[1], hasOverride: boolean, resolved: ReturnType<typeof resolveCartLinksConfig>): string {
+  const source = hasOverride ? "override" : "global";
+  const labels: Record<string, string> = { off: "Off", cart: "Cart", checkout: "Cart & Checkout" };
+  return `${labels[resolved.mode] ?? resolved.mode}  (qty ${resolved.quantity}, ${source})`;
+}
+
 function main() {
   const config = loadConfig();
 
   console.log(`\n── Monitor Status — ${config.stores.length} store(s) ──\n`);
 
+  const globalCartLinks = config.cartLinks ?? { mode: "off", quantity: 1 };
+  console.log(`  Global cart links: ${globalCartLinks.mode}  (qty ${globalCartLinks.quantity})\n`);
+
   for (const store of config.stores) {
-    console.log(`  Store:    ${store.name}`);
-    console.log(`  URL:      ${store.url}`);
-    console.log(`  Interval: ${store.intervalSeconds}s`);
+    const resolved = resolveCartLinksConfig(config, store);
+    console.log(`  Store:      ${store.name}`);
+    console.log(`  URL:        ${store.url}`);
+    console.log(`  Interval:   ${store.intervalSeconds}s`);
+    console.log(`  Cart links: ${describeCartLinks(store, Boolean(store.cartLinks), resolved)}`);
     console.log(`  Targets:`);
     for (const target of store.targets) {
       console.log(`    • ${describeTarget(target)}`);
