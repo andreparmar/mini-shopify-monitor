@@ -36,5 +36,9 @@
         }
       ]
     }
-  ]
+  ],
+  "cartLinks": {
+    "mode": "checkout",
+    "quantity": 1
+  }
 }
