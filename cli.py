@@ -369,18 +369,44 @@ def sync_shipping_to_railway(values=None):
     if values is None:
         values = read_env_file()
 
-    pairs = [f"{key}={values.get(key, '')}" for key, _ in CHECKOUT_FIELDS]
+    # Railway's CLI rejects `KEY=` with an empty value in `variable set`, so blank
+    # fields have to go through `variable delete` instead to actually clear them.
+    non_empty = [(key, values.get(key, "").strip()) for key, _ in CHECKOUT_FIELDS if values.get(key, "").strip()]
+    empty_keys = [key for key, _ in CHECKOUT_FIELDS if not values.get(key, "").strip()]
 
-    print("  Syncing to Railway (skipping auto-deploy)...")
-    result = subprocess.run(
-        ["railway", "variable", "set", *pairs, "--skip-deploys"],
-        capture_output=True, text=True, cwd=REPO_ROOT,
-    )
-    if result.returncode != 0:
-        print(f"  ✗ Sync failed:\n{result.stderr.strip()}")
-        return
+    if non_empty:
+        pairs = [f"{key}={val}" for key, val in non_empty]
+        print("  Syncing to Railway (skipping auto-deploy)...")
+        result = subprocess.run(
+            ["railway", "variable", "set", *pairs, "--skip-deploys"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+        if result.returncode != 0:
+            print(f"  ✗ Sync failed:\n{result.stderr.strip()}")
+            return
+        print(f"  ✓ Railway variables updated ({len(non_empty)} field(s))")
 
-    print("  ✓ Railway variables updated")
+    if empty_keys:
+        existing = subprocess.run(
+            ["railway", "variable", "list", "--kv"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+        existing_keys = set()
+        if existing.returncode == 0:
+            for line in existing.stdout.splitlines():
+                if "=" in line:
+                    existing_keys.add(line.split("=", 1)[0])
+
+        cleared = 0
+        for key in empty_keys:
+            if key in existing_keys:
+                subprocess.run(
+                    ["railway", "variable", "delete", key],
+                    capture_output=True, text=True, cwd=REPO_ROOT,
+                )
+                cleared += 1
+        if cleared:
+            print(f"  ✓ Cleared {cleared} blank field(s) on Railway")
 
     redeploy = questionary.confirm("Redeploy now to apply?", default=True).ask()
     if redeploy:
