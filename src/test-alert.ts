@@ -22,7 +22,15 @@ async function main() {
 
   console.log(`Fetching live product from ${store.name} (${store.url})...`);
 
-  const res = await fetch(`${store.url}/products.json?limit=250`);
+  const res = await fetch(`${store.url}/products.json?limit=250`, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; restock-monitor/1.0)" },
+  });
+
+  if (!res.ok) {
+    console.error(`${store.name}: products.json returned ${res.status} — try again in a minute (Shopify throttled this request)`);
+    process.exit(1);
+  }
+
   const data = (await res.json()) as {
     products: Array<{
       title: string;
