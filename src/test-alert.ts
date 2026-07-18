@@ -70,5 +70,8 @@ async function main() {
 
 main().catch((err) => {
   console.error("Test failed:", err?.message ?? err);
+  if (err?.cause) {
+    console.error("Cause:", err.cause);
+  }
   process.exit(1);
 });
