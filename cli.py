@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import subprocess
 import sys
+import urllib.request
+from collections import Counter
 
 try:
     import questionary
@@ -44,6 +47,8 @@ def format_target(target):
         exc = " ".join(f"-{k}" for k in target.get("exclude", []))
         kws = " ".join(p for p in [inc, exc] if p)
         return f"Keywords: {kws}"
+    if t == "product_type":
+        return f"Product type: {target['value']}"
     return str(target)
 
 def parse_keywords(raw):
@@ -51,6 +56,90 @@ def parse_keywords(raw):
     include = [t for t in tokens if not t.startswith("-")]
     exclude = [t.lstrip("-") for t in tokens if t.startswith("-")]
     return include, exclude
+
+
+# ── Catalog discovery ────────────────────────────────────────────────────────
+
+CATEGORY_STOPWORDS = {
+    "the", "a", "an", "of", "for", "with", "and", "in", "on", "by", "to", "new",
+    "s", "m", "l", "xl", "xs", "xxl", "xxs", "2xl", "3xl", "os",
+}
+
+def fetch_products_json(store_url):
+    url = f"{store_url.rstrip('/')}/products.json?limit=250"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; restock-monitor/1.0)"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode())
+
+def tokenize_title(title):
+    words = re.findall(r"[a-zA-Z']+", title.lower())
+    return [w for w in words if w not in CATEGORY_STOPWORDS and len(w) > 2]
+
+def discover_categories(store_url):
+    print(f"\n  Fetching catalog from {store_url}...")
+    try:
+        data = fetch_products_json(store_url)
+    except Exception as e:
+        print(f"  ✗ Failed to fetch products.json: {e}")
+        return None
+
+    products = data.get("products", [])
+    if not products:
+        print("  ✗ No products found")
+        return None
+
+    print(f"  ✓ Found {len(products)} products\n")
+
+    type_counts = Counter((p.get("product_type") or "").strip() for p in products if (p.get("product_type") or "").strip())
+
+    token_counts = Counter()
+    for p in products:
+        for tok in set(tokenize_title(p.get("title", ""))):
+            token_counts[tok] += 1
+
+    choices = []
+
+    if type_counts:
+        for name, count in type_counts.most_common():
+            choices.append(questionary.Choice(f"[product type] {name}  ({count} products)", value=("product_type", name)))
+
+    for word, count in token_counts.most_common(30):
+        if count >= 2:
+            choices.append(questionary.Choice(f"[title word] {word}  ({count} products)", value=("word", word)))
+
+    if not choices:
+        print("  No clear categories found — this catalog's titles/types are too varied to group automatically.")
+        return None
+
+    selected = questionary.checkbox(
+        "Select categories to monitor (space to toggle, enter to confirm):",
+        choices=choices,
+    ).ask()
+
+    if not selected:
+        return None
+
+    return selected
+
+def build_targets_from_selection(selected):
+    targets = []
+    include_words = []
+
+    for kind, value in selected:
+        if kind == "product_type":
+            targets.append({"type": "product_type", "value": value})
+        elif kind == "word":
+            include_words.append(value)
+
+    if include_words:
+        exclude_raw = questionary.text(
+            "Exclude any words from those title matches? (optional, space separated):",
+            default="",
+        ).ask()
+        exclude_words = [w.strip() for w in (exclude_raw or "").split() if w.strip()]
+        targets.append({"type": "keywords", "include": include_words, "exclude": exclude_words})
+
+    return targets
 
 
 # ── Cart link helpers ──────────────────────────────────────────────────────────
@@ -148,7 +237,7 @@ def delete_store(config):
 def add_target(store):
     target_type = questionary.select(
         "Target type:",
-        choices=["All products", "Handle", "Variant ID", "Keywords", "← Back"],
+        choices=["All products", "Handle", "Variant ID", "Product type", "Keywords", "Discover from catalog", "← Back"],
     ).ask()
 
     if not target_type or target_type == "← Back":
@@ -171,6 +260,12 @@ def add_target(store):
             store["targets"].append({"type": "variant_id", "value": value.strip()})
             print(f"  ✓ Added variant ID: {value.strip()}")
 
+    elif target_type == "Product type":
+        value = questionary.text("Product type (exact match, e.g. Hats):").ask()
+        if value and value.strip():
+            store["targets"].append({"type": "product_type", "value": value.strip()})
+            print(f"  ✓ Added product type: {value.strip()}")
+
     elif target_type == "Keywords":
         print("  Enter keywords to match. Prefix with - to exclude. e.g.  hat trucker -kids -youth")
         raw = questionary.text("Keywords:").ask()
@@ -180,6 +275,17 @@ def add_target(store):
             inc_str = ", ".join(include) if include else "—"
             exc_str = ", ".join(exclude) if exclude else "—"
             print(f"  ✓ Added keywords  include: [{inc_str}]  exclude: [{exc_str}]")
+
+    elif target_type == "Discover from catalog":
+        selected = discover_categories(store["url"])
+        if not selected:
+            return
+        new_targets = build_targets_from_selection(selected)
+        if not new_targets:
+            return
+        store["targets"].extend(new_targets)
+        for t in new_targets:
+            print(f"  ✓ Added: {format_target(t)}")
 
 
 def remove_target(store):

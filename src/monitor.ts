@@ -40,6 +40,10 @@ function matchesTargets(product: ShopifyProduct, variant: ShopifyVariant, target
       const noneExcluded = target.exclude.every((kw) => !title.includes(kw.toLowerCase()));
       if (allIncluded && noneExcluded) return true;
     }
+
+    if (target.type === "product_type" && product.product_type?.toLowerCase() === target.value.toLowerCase()) {
+      return true;
+    }
   }
   return false;
 }

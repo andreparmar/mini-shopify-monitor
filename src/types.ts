@@ -14,6 +14,7 @@ export interface ShopifyProduct {
   id: number;
   title: string;
   handle: string;
+  product_type: string;
   images: Array<{ src: string }>;
   variants: ShopifyVariant[];
 }
@@ -42,7 +43,8 @@ export type Target =
   | { type: "all" }
   | { type: "handle"; value: string }
   | { type: "variant_id"; value: string }
-  | { type: "keywords"; include: string[]; exclude: string[] };
+  | { type: "keywords"; include: string[]; exclude: string[] }
+  | { type: "product_type"; value: string };
 
 export type CartLinkMode = "off" | "cart" | "checkout";
 
