@@ -11,7 +11,9 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "questionary", "-q"])
     import questionary
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH = os.path.join(REPO_ROOT, "config.json")
+ENV_PATH = os.path.join(REPO_ROOT, ".env")
 
 
 # ── Config helpers ────────────────────────────────────────────────────────────
@@ -286,16 +288,121 @@ def edit_global_cart_links(config):
         print(f"  ✓ Global cart links set to: {format_cart_links(result)}")
 
 
+# ── Shipping info (local .env, synced to Railway variables — never committed) ──
+
+CHECKOUT_FIELDS = [
+    ("CHECKOUT_EMAIL", "Email"),
+    ("CHECKOUT_FIRST_NAME", "First name"),
+    ("CHECKOUT_LAST_NAME", "Last name"),
+    ("CHECKOUT_ADDRESS1", "Address line 1"),
+    ("CHECKOUT_ADDRESS2", "Address line 2"),
+    ("CHECKOUT_CITY", "City"),
+    ("CHECKOUT_PROVINCE", "Province/State (2-letter, e.g. NY)"),
+    ("CHECKOUT_ZIP", "ZIP/Postal code"),
+    ("CHECKOUT_COUNTRY", "Country (2-letter, e.g. US)"),
+    ("CHECKOUT_PHONE", "Phone"),
+]
+
+def read_env_file():
+    values = {}
+    if os.path.exists(ENV_PATH):
+        with open(ENV_PATH) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                values[key.strip()] = val.strip()
+    return values
+
+def write_env_file(updates):
+    lines = []
+    seen = set()
+
+    if os.path.exists(ENV_PATH):
+        with open(ENV_PATH) as f:
+            for line in f:
+                raw = line.rstrip("\n")
+                stripped = raw.strip()
+                if stripped and not stripped.startswith("#") and "=" in stripped:
+                    key = stripped.split("=", 1)[0].strip()
+                    if key in updates:
+                        lines.append(f"{key}={updates[key]}")
+                        seen.add(key)
+                        continue
+                lines.append(raw)
+
+    for key, val in updates.items():
+        if key not in seen:
+            lines.append(f"{key}={val}")
+
+    with open(ENV_PATH, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+    print("  ✓ .env saved locally (gitignored — never committed)")
+
+def format_shipping_summary(env):
+    filled = sum(1 for key, _ in CHECKOUT_FIELDS if env.get(key))
+    return f"{filled}/{len(CHECKOUT_FIELDS)} fields set"
+
+def edit_shipping_info():
+    env = read_env_file()
+    print(f"\n  Shipping info — {format_shipping_summary(env)}")
+    print("  Stored only in local .env (gitignored). Leave blank to clear a field.\n")
+
+    updates = {}
+    for key, label in CHECKOUT_FIELDS:
+        current = env.get(key, "")
+        val = questionary.text(f"{label}:", default=current).ask()
+        if val is None:
+            print("  Cancelled — no changes saved")
+            return
+        updates[key] = val.strip()
+
+    write_env_file(updates)
+
+    sync = questionary.confirm("Sync these values to Railway now?", default=True).ask()
+    if sync:
+        sync_shipping_to_railway(updates)
+
+def sync_shipping_to_railway(values=None):
+    if values is None:
+        values = read_env_file()
+
+    pairs = [f"{key}={values.get(key, '')}" for key, _ in CHECKOUT_FIELDS]
+
+    print("  Syncing to Railway (skipping auto-deploy)...")
+    result = subprocess.run(
+        ["railway", "variable", "set", *pairs, "--skip-deploys"],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+    if result.returncode != 0:
+        print(f"  ✗ Sync failed:\n{result.stderr.strip()}")
+        return
+
+    print("  ✓ Railway variables updated")
+
+    redeploy = questionary.confirm("Redeploy now to apply?", default=True).ask()
+    if redeploy:
+        rd = subprocess.run(
+            ["railway", "redeploy", "--yes"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+        if rd.returncode == 0:
+            print("  ✓ Redeploy triggered")
+        else:
+            print(f"  ✗ Redeploy failed:\n{rd.stderr.strip()}")
+
+
 # ── Push to Railway ───────────────────────────────────────────────────────────
 
 def push_to_railway():
     print()
-    repo_root = os.path.dirname(os.path.abspath(__file__))
 
     # Check if config.json has uncommitted changes
     status = subprocess.run(
         ["git", "status", "--porcelain", "config.json"],
-        capture_output=True, text=True, cwd=repo_root,
+        capture_output=True, text=True, cwd=REPO_ROOT,
     )
     has_changes = bool(status.stdout.strip())
 
@@ -306,10 +413,10 @@ def push_to_railway():
         if not msg:
             return
 
-        subprocess.run(["git", "add", "config.json"], cwd=repo_root)
+        subprocess.run(["git", "add", "config.json"], cwd=REPO_ROOT)
         commit = subprocess.run(
             ["git", "commit", "-m", msg],
-            capture_output=True, text=True, cwd=repo_root,
+            capture_output=True, text=True, cwd=REPO_ROOT,
         )
         if commit.returncode != 0:
             print(f"  ✗ Commit failed:\n{commit.stderr.strip()}")
@@ -320,7 +427,7 @@ def push_to_railway():
 
     push = subprocess.run(
         ["git", "push", "origin", "master"],
-        capture_output=True, text=True, cwd=repo_root,
+        capture_output=True, text=True, cwd=REPO_ROOT,
     )
     if push.returncode == 0:
         print("  ✓ Pushed — Railway is redeploying")
@@ -340,7 +447,7 @@ def main():
 
         action = questionary.select(
             "What would you like to do?",
-            choices=["Add store", "Edit store", "Delete store", "Cart link settings", "Push to Railway", "Exit"],
+            choices=["Add store", "Edit store", "Delete store", "Cart link settings", "Shipping info", "Push to Railway", "Exit"],
         ).ask()
 
         if not action or action == "Exit":
@@ -354,6 +461,8 @@ def main():
             delete_store(config)
         elif action == "Cart link settings":
             edit_global_cart_links(config)
+        elif action == "Shipping info":
+            edit_shipping_info()
         elif action == "Push to Railway":
             push_to_railway()
 
