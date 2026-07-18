@@ -38,7 +38,7 @@
     }
   ],
   "cartLinks": {
-    "mode": "off",
+    "mode": "cart",
     "quantity": 1
   }
 }
