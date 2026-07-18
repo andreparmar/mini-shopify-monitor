@@ -108,13 +108,14 @@ def discover_categories(store_url):
         for name, count in type_counts.most_common():
             choices.append(questionary.Choice(f"[product type] {name}  ({count} products)", value=("product_type", name)))
 
-    for word, count in token_counts.most_common(30):
-        if count >= 2:
-            choices.append(questionary.Choice(f"[title word] {word}  ({count} products)", value=("word", word)))
+    for word, count in token_counts.most_common(60):
+        choices.append(questionary.Choice(f"[title word] {word}  ({count} product{'s' if count != 1 else ''})", value=("word", word)))
 
     if not choices:
         print("  No clear categories found — this catalog's titles/types are too varied to group automatically.")
         return None
+
+    print("  ⚠ Press SPACE to check a box, then ENTER to confirm — arrow keys alone select nothing.\n")
 
     selected = questionary.checkbox(
         "Select categories to monitor (space to toggle, enter to confirm):",
@@ -122,6 +123,7 @@ def discover_categories(store_url):
     ).ask()
 
     if not selected:
+        print("  Nothing was checked (remember: SPACE toggles, ENTER confirms) — no targets added.")
         return None
 
     return selected
