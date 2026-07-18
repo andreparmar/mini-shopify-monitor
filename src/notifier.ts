@@ -3,12 +3,41 @@ import type { CartLinksConfig, CheckoutDetails, VariantState } from "./types";
 
 const NTFY_TOPIC = process.env.NTFY_TOPIC!;
 const NTFY_BASE = "https://ntfy.sh";
+const RETRY_DELAYS_MS = [2000, 5000];
 
 const HAT_KEYWORDS = ["hat", "trucker", "bucket", "dad hat", "cap", "beanie"];
 
 function isHat(title: string): boolean {
   const lower = title.toLowerCase();
   return HAT_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// A failed restock alert can't be retried on the next poll — the variant's state
+// is already marked available by then — so this send gets its own short retry
+// window to ride out transient network blips reaching ntfy.sh.
+async function postWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastErr: unknown;
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (!res.ok) throw new Error(`ntfy returned ${res.status}: ${await res.text()}`);
+      return res;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < RETRY_DELAYS_MS.length) {
+        const delay = RETRY_DELAYS_MS[attempt];
+        console.warn(`[NTFY RETRY ${attempt + 1}] ${(err as Error).message} — retrying in ${delay / 1000}s`);
+        await sleep(delay);
+      }
+    }
+  }
+
+  throw lastErr;
 }
 
 // ntfy renders up to 3 of these as real tappable buttons on the notification itself
@@ -63,15 +92,11 @@ export async function sendRestockAlert(
     headers["Attach"] = variant.imageUrl;
   }
 
-  const res = await fetch(`${NTFY_BASE}/${NTFY_TOPIC}`, {
+  await postWithRetry(`${NTFY_BASE}/${NTFY_TOPIC}`, {
     method: "POST",
     headers,
     body,
   });
-
-  if (!res.ok) {
-    throw new Error(`ntfy returned ${res.status}: ${await res.text()}`);
-  }
 
   console.log(`[ALERT SENT]${hat ? " [HAT]" : ""} ${variant.productTitle} — ${variant.variantTitle} (${stockLine})`);
 }
