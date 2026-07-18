@@ -65,6 +65,11 @@ CATEGORY_STOPWORDS = {
     "s", "m", "l", "xl", "xs", "xxl", "xxs", "2xl", "3xl", "os",
 }
 
+def normalize_store_url(raw):
+    url = raw.strip().rstrip("/")
+    url = re.sub(r"/products\.json.*$", "", url)
+    return url
+
 def fetch_products_json(store_url):
     url = f"{store_url.rstrip('/')}/products.json?limit=250"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; restock-monitor/1.0)"})
@@ -140,6 +145,76 @@ def build_targets_from_selection(selected):
         targets.append({"type": "keywords", "include": include_words, "exclude": exclude_words})
 
     return targets
+
+def discover_categories_flow(config):
+    print()
+    raw_url = questionary.text(
+        "Store URL or products.json link (e.g. https://alexzono.com or https://alexzono.com/products.json):"
+    ).ask()
+    if not raw_url or not raw_url.strip():
+        return
+
+    store_url = normalize_store_url(raw_url)
+
+    selected = discover_categories(store_url)
+    if not selected:
+        return
+
+    new_targets = build_targets_from_selection(selected)
+    if not new_targets:
+        return
+
+    print("\n  Targets built:")
+    for t in new_targets:
+        print(f"    • {format_target(t)}")
+
+    action = questionary.select(
+        "What would you like to do with these targets?",
+        choices=["Add as a new store", "Add to an existing store", "Don't save — just show me"],
+    ).ask()
+
+    if not action or action == "Don't save — just show me":
+        return
+
+    if action == "Add as a new store":
+        name = questionary.text("Store name (slug):").ask()
+        if not name or not name.strip():
+            return
+        if any(s["name"] == name.strip() for s in config["stores"]):
+            print(f"  ✗ Store '{name}' already exists.")
+            return
+
+        interval_raw = questionary.text("Poll interval in seconds:", default="30").ask()
+        try:
+            interval = max(5, int(interval_raw))
+        except Exception:
+            interval = 30
+
+        config["stores"].append({
+            "name": name.strip(),
+            "url": store_url,
+            "intervalSeconds": interval,
+            "targets": new_targets,
+        })
+        save_config(config)
+        print(f"  ✓ Store '{name}' added with {len(new_targets)} discovered target(s)")
+
+    elif action == "Add to an existing store":
+        if not config["stores"]:
+            print("  No stores configured.")
+            return
+
+        choice = questionary.select(
+            "Select store:",
+            choices=[s["name"] for s in config["stores"]] + ["← Back"],
+        ).ask()
+        if not choice or choice == "← Back":
+            return
+
+        store = next(s for s in config["stores"] if s["name"] == choice)
+        store["targets"].extend(new_targets)
+        save_config(config)
+        print(f"  ✓ Added {len(new_targets)} target(s) to '{choice}'")
 
 
 # ── Cart link helpers ──────────────────────────────────────────────────────────
@@ -597,7 +672,7 @@ def main():
 
         action = questionary.select(
             "What would you like to do?",
-            choices=["Add store", "Edit store", "Delete store", "Cart link settings", "Shipping info", "Push to Railway", "Exit"],
+            choices=["Add store", "Edit store", "Delete store", "Discover categories", "Cart link settings", "Shipping info", "Push to Railway", "Exit"],
         ).ask()
 
         if not action or action == "Exit":
@@ -609,6 +684,8 @@ def main():
             edit_menu(config)
         elif action == "Delete store":
             delete_store(config)
+        elif action == "Discover categories":
+            discover_categories_flow(config)
         elif action == "Cart link settings":
             edit_global_cart_links(config)
         elif action == "Shipping info":
