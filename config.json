@@ -9,6 +9,32 @@
           "type": "all"
         }
       ]
+    },
+    {
+      "name": "terignota",
+      "url": "https://terignota.com",
+      "intervalSeconds": 30,
+      "targets": [
+        {
+          "type": "all"
+        },
+        {
+          "type": "variant_id",
+          "value": "42486545285209"
+        },
+        {
+          "type": "variant_id",
+          "value": "42486545449049"
+        },
+        {
+          "type": "variant_id",
+          "value": "42963759562841"
+        },
+        {
+          "type": "variant_id",
+          "value": "43335298646105"
+        }
+      ]
     }
   ]
 }
