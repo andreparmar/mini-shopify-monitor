@@ -50,9 +50,11 @@ export async function sendRestockAlert(
   variant: VariantState,
   cartLinks: CartLinksConfig,
   storeUrl: string,
-  checkoutDetails: CheckoutDetails
+  checkoutDetails: CheckoutDetails,
+  isNewProduct = false
 ): Promise<void> {
   const hat = isHat(variant.productTitle);
+  const eventLabel = isNewProduct ? "NEW DROP" : "RESTOCK";
 
   const stockLine =
     variant.totalVariants === 1
@@ -76,10 +78,12 @@ export async function sendRestockAlert(
 
   const body = lines.join("\n");
 
+  const baseTags = hat ? "rotating_light,billed_cap" : "rotating_light";
+
   const headers: Record<string, string> = {
-    "Title": `RESTOCK: ${variant.productTitle}`,
+    "Title": `${eventLabel}: ${variant.productTitle}`,
     "Priority": hat ? "urgent" : "high",
-    "Tags": hat ? "rotating_light,billed_cap" : "rotating_light",
+    "Tags": isNewProduct ? `${baseTags},new` : baseTags,
     "Click": variant.productUrl,
     "Content-Type": "text/plain",
   };
@@ -98,5 +102,5 @@ export async function sendRestockAlert(
     body,
   });
 
-  console.log(`[ALERT SENT]${hat ? " [HAT]" : ""} ${variant.productTitle} — ${variant.variantTitle} (${stockLine})`);
+  console.log(`[${eventLabel} SENT]${hat ? " [HAT]" : ""} ${variant.productTitle} — ${variant.variantTitle} (${stockLine})`);
 }

@@ -38,6 +38,9 @@ export function loadConfig(): MonitorConfig {
     if (!Array.isArray(store.targets) || store.targets.length === 0) {
       throw new Error(`Store '${store.name}' must have at least one target`);
     }
+    if (store.notifyNewProducts !== undefined && typeof store.notifyNewProducts !== "boolean") {
+      throw new Error(`Store '${store.name}' notifyNewProducts must be a boolean`);
+    }
     validateCartLinks(store.cartLinks, `Store '${store.name}'`);
   }
 

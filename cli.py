@@ -231,17 +231,33 @@ def edit_store_cart_links(store):
         print(f"  ✓ Store cart links set to: {format_cart_links(result)}")
 
 
+def toggle_new_product_alerts(store):
+    current = store.get("notifyNewProducts", True)
+    choice = questionary.select(
+        f"New-drop alerts (currently {'On' if current else 'Off'}):",
+        choices=["On", "Off", "← Back"],
+    ).ask()
+
+    if not choice or choice == "← Back":
+        return
+
+    store["notifyNewProducts"] = (choice == "On")
+    print(f"  ✓ New-drop alerts set to: {choice}")
+
+
 def edit_store(store):
     while True:
+        new_drops_state = "On" if store.get("notifyNewProducts", True) else "Off"
         print(f"\n  Store: {store['name']}  ({store['url']})  every {store['intervalSeconds']}s")
         print(f"  Cart links: {format_cart_links(store.get('cartLinks'))}")
+        print(f"  New drops:  {new_drops_state}")
         print("  Targets:")
         for i, t in enumerate(store["targets"]):
             print(f"    {i + 1}. {format_target(t)}")
 
         action = questionary.select(
             "Action:",
-            choices=["Add target", "Remove target", "Change interval", "Cart links override", "← Back"],
+            choices=["Add target", "Remove target", "Change interval", "Cart links override", "New-drop alerts", "← Back"],
         ).ask()
 
         if not action or action == "← Back":
@@ -254,6 +270,8 @@ def edit_store(store):
             change_interval(store)
         elif action == "Cart links override":
             edit_store_cart_links(store)
+        elif action == "New-drop alerts":
+            toggle_new_product_alerts(store)
 
 
 def edit_menu(config):

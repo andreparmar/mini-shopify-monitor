@@ -115,21 +115,32 @@ async function poll(
   try {
     const products = await fetchWithRetry(store);
     const currentState = buildStateMap(store, products);
-    const restocked: VariantState[] = [];
+    const notifyNewProducts = store.notifyNewProducts ?? true;
+    const events: Array<{ variant: VariantState; isNewProduct: boolean }> = [];
 
     for (const [id, current] of Object.entries(currentState)) {
+      if (isFirstRun) continue;
       const previous = previousState[id];
-      if (!isFirstRun && previous && !previous.available && current.available) {
-        restocked.push(current);
+
+      if (previous) {
+        if (!previous.available && current.available) {
+          events.push({ variant: current, isNewProduct: false });
+        }
+      } else if (current.available && notifyNewProducts) {
+        events.push({ variant: current, isNewProduct: true });
       }
     }
 
-    if (restocked.length > 0) {
-      console.log(`[${store.name}][${timestamp}] ${restocked.length} restock(s) detected — sending alerts`);
+    if (events.length > 0) {
+      const restockCount = events.filter((e) => !e.isNewProduct).length;
+      const newCount = events.filter((e) => e.isNewProduct).length;
+      console.log(
+        `[${store.name}][${timestamp}] ${restockCount} restock(s), ${newCount} new drop(s) detected — sending alerts`
+      );
       const cartLinks = resolveCartLinksConfig(config, store);
-      for (const variant of restocked) {
+      for (const { variant, isNewProduct } of events) {
         try {
-          await sendRestockAlert(variant, cartLinks, store.url, checkoutDetails);
+          await sendRestockAlert(variant, cartLinks, store.url, checkoutDetails, isNewProduct);
         } catch (err) {
           console.error(`[${store.name}][ERROR] Failed to send alert for ${variant.productTitle}:`, err);
         }

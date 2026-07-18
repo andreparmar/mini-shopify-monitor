@@ -34,6 +34,7 @@ function main() {
     console.log(`  URL:        ${store.url}`);
     console.log(`  Interval:   ${store.intervalSeconds}s`);
     console.log(`  Cart links: ${describeCartLinks(store, Boolean(store.cartLinks), resolved)}`);
+    console.log(`  New drops:  ${(store.notifyNewProducts ?? true) ? "On" : "Off"}`);
     console.log(`  Targets:`);
     for (const target of store.targets) {
       console.log(`    • ${describeTarget(target)}`);

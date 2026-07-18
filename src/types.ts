@@ -57,6 +57,10 @@ export interface StoreConfig {
   intervalSeconds: number;
   targets: Target[];
   cartLinks?: CartLinksConfig;
+  // Alert when a variant matching this store's targets is seen for the first time
+  // and already available (a brand-new drop), not just a restock of something
+  // already in state. Defaults to true.
+  notifyNewProducts?: boolean;
 }
 
 export interface MonitorConfig {
